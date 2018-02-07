@@ -1,0 +1,324 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns="http://www.springframework.org/schema/beans"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:util="http://www.springframework.org/schema/util"
+       xmlns:cxf="http://camel.apache.org/schema/cxf"
+       xmlns:core="http://cxf.apache.org/core"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+                        http://www.springframework.org/schema/beans/spring-beans.xsd
+                        http://www.springframework.org/schema/context
+                        http://www.springframework.org/schema/context/spring-context.xsd
+                        http://www.springframework.org/schema/util
+                        http://www.springframework.org/schema/util/spring-util.xsd
+                        http://camel.apache.org/schema/cxf
+                        http://camel.apache.org/schema/cxf/camel-cxf.xsd
+                        http://camel.apache.org/schema/spring
+                        http://camel.apache.org/schema/spring/camel-spring.xsd
+                        http://cxf.apache.org/core
+                        http://cxf.apache.org/schemas/core.xsd">
+
+    <context:annotation-config/>
+
+    <util:properties id="props" location="test-config.properties"/>
+
+    <bean id="properties" class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+        <property name="properties" ref="props"/>
+    </bean>
+
+
+    <bean id="dummyLogic" class="com.integ.integration.services.contracts.common.test.service.DummyLogic"/>
+    <bean id="unknownOperationException" class="java.lang.IllegalArgumentException">
+        <constructor-arg value="Unknown opration requested"/>
+    </bean>
+    <bean id="illegalArgumentException" class="java.lang.IllegalArgumentException"/>
+    <bean id="e400" class="java.lang.IllegalStateException">
+        <constructor-arg value="Unknown opration requested"/>
+    </bean>
+
+    <camelContext trace="${camel.trace.enabled:false}"
+                  id="dummyRest-qoteAndBuy-camelContext"
+                  streamCache="true"
+                  useMDCLogging="true"
+                  xmlns="http://camel.apache.org/schema/spring">
+
+        <propertyPlaceholder id="camelProps" location="ref:props"/>
+
+        <route id="dummy-route">
+            <from uri="cxfrs:bean:getDummyService?bindingStyle=SimpleConsumer"/>
+            <from uri="cxfrs:bean:numbersDummyService?bindingStyle=SimpleConsumer"/>
+            <from uri="cxfrs:bean:datesDummyService?bindingStyle=SimpleConsumer"/>
+            <from uri="cxfrs:bean:listsDummyService?bindingStyle=SimpleConsumer"/>
+            <from uri="cxfrs:bean:abstractDummyService?bindingStyle=SimpleConsumer"/>
+
+            <doTry>
+                <choice>
+                    <when>
+                        <simple>${headers.operationName} == 'getTest'</simple> <!-- Checking with google service -->
+                        <choice>
+                            <when>
+                                <simple>${header.SOME_ID} &lt; 1</simple>
+                                <setHeader headerName="CamelHttpResponseCode">
+                                    <constant>404</constant>
+                                </setHeader>
+                            </when>
+                            <otherwise>
+                                <setBody>
+                                    <spel>#{
+                                        new com.integ.integration.services.contracts.common.test.dto.DateDummyResponse()
+                                    }</spel>
+                                </setBody>
+                            </otherwise>
+                        </choice>
+                    </when>
+                    <when>
+                        <simple>${headers.operationName} == 'getError'</simple>
+                        <choice>
+                            <when>
+                                <simple>${header.ERROR_ID} == '400'</simple>
+                                <throwException ref="e400"/>
+                            </when>
+                            <when>
+                                <simple>${header.ERROR_ID} == '500'</simple>
+                                <throwException ref="unknownOperationException"/>
+                            </when>
+                            <when>
+                                <simple>${header.ERROR_ID} == '503'</simple>
+                                <setHeader headerName="CamelHttpResponseCode">
+                                    <constant>503</constant>
+                                </setHeader>
+                            </when>
+                            <otherwise>
+                                <throwException ref="illegalArgumentException"/>
+                            </otherwise>
+                        </choice>
+                    </when>
+                    <when>
+                        <simple>${headers.operationName} == 'testDates'</simple>
+                        <bean ref="dummyLogic"/>
+                    </when>
+                    <when>
+                        <simple>${headers.operationName} == 'testNumbers'</simple>
+                        <bean ref="dummyLogic"/>
+                    </when>
+                    <when>
+                        <simple>${headers.operationName} == 'testLists'</simple>
+                        <bean ref="dummyLogic"/>
+                    </when>
+                    <otherwise>
+                        <throwException ref="unknownOperationException"/>
+                    </otherwise>
+                </choice>
+                <doCatch>
+                    <exception>java.lang.IllegalStateException</exception>
+                    <setBody>
+                        <spel>#{
+                                    new com.integ.integration.services.contracts.common.test.dto.FaultResponse()
+                                }</spel>
+                    </setBody>
+                    <setHeader headerName="CamelHttpResponseCode">
+                        <constant>400</constant>
+                    </setHeader>
+                </doCatch>
+            </doTry>
+        </route>
+    </camelContext>
+
+
+
+
+    <!--
+        Jackson
+    -->
+    <bean id="jacksonJaxbJsonProvider" class="com.fasterxml.jackson.jaxrs.json.JacksonJaxbJsonProvider">
+        <constructor-arg ref="objectMapper" />
+        <constructor-arg value="#{ T(com.fasterxml.jackson.jaxrs.json.JacksonJaxbJsonProvider).DEFAULT_ANNOTATIONS }"/>
+    </bean>
+    <bean id="objectMapper" class="com.fasterxml.jackson.databind.ObjectMapper"/>
+    <bean class="org.springframework.beans.factory.config.MethodInvokingFactoryBean">
+        <property name="targetObject" ref="objectMapper" />
+        <property name="targetMethod" value="setSerializationInclusion" />
+        <property name="arguments" value="#{ T(com.fasterxml.jackson.annotation.JsonInclude.Include).NON_EMPTY }"/>
+    </bean>
+    <bean class="org.springframework.beans.factory.config.MethodInvokingFactoryBean">
+        <property name="targetObject" ref="jacksonJaxbJsonProvider" />
+        <property name="targetMethod" value="configure" />
+        <property name="arguments">
+            <list>
+                <value type="com.fasterxml.jackson.databind.SerializationFeature">WRITE_DATES_AS_TIMESTAMPS</value>
+                <value>false</value>
+            </list>
+        </property>
+    </bean>
+    <bean class="org.springframework.beans.factory.config.MethodInvokingFactoryBean">
+        <property name="targetObject" ref="jacksonJaxbJsonProvider" />
+        <property name="targetMethod" value="configure" />
+        <property name="arguments">
+            <list>
+                <value type="com.fasterxml.jackson.core.JsonGenerator.Feature">WRITE_BIGDECIMAL_AS_PLAIN</value>
+                <value>true</value>
+            </list>
+        </property>
+    </bean>
+    <bean class="org.springframework.beans.factory.config.MethodInvokingFactoryBean">
+        <property name="targetObject" ref="jacksonJaxbJsonProvider" />
+        <property name="targetMethod" value="configure" />
+        <property name="arguments">
+            <list>
+                <value type="com.fasterxml.jackson.core.JsonGenerator.Feature">WRITE_NUMBERS_AS_STRINGS</value>
+                <value>true</value>
+            </list>
+        </property>
+    </bean>
+
+
+
+
+    <!--
+       Servers
+    -->
+    <core:bus bus="dummyCxfBus">
+        <core:properties>
+            <entry key="skip.default.json.provider.registration" value="true"/>
+        </core:properties>
+    </core:bus>
+    <cxf:rsServer id="getDummyService" address="${dummy.rest.address}/get"
+                  serviceClass="com.integ.integration.services.contracts.common.test.service.DummyGetService" bus="dummyCxfBus">
+        <cxf:providers>
+            <ref bean="jacksonJaxbJsonProvider"/>
+        </cxf:providers>
+        <cxf:features>
+            <core:logging/>
+            <bean class="org.apache.cxf.transport.common.gzip.GZIPFeature"/>
+        </cxf:features>
+        <cxf:outInterceptors>
+            <bean class="com.integ.integration.services.contracts.common.rest.ResponseCodeSettingInterceptor"/>
+        </cxf:outInterceptors>
+    </cxf:rsServer>
+    <cxf:rsServer id="numbersDummyService" address="${dummy.rest.address}/numbers"
+                  serviceClass="com.integ.integration.services.contracts.common.test.service.DummyNumbersService" bus="dummyCxfBus">
+        <cxf:providers>
+            <ref bean="jacksonJaxbJsonProvider"/>
+        </cxf:providers>
+        <cxf:features>
+            <core:logging/>
+            <bean class="org.apache.cxf.transport.common.gzip.GZIPFeature"/>
+        </cxf:features>
+        <cxf:outInterceptors>
+            <bean class="com.integ.integration.services.contracts.common.rest.ResponseCodeSettingInterceptor"/>
+        </cxf:outInterceptors>
+    </cxf:rsServer>
+    <cxf:rsServer id="datesDummyService" address="${dummy.rest.address}/dates"
+                  serviceClass="com.integ.integration.services.contracts.common.test.service.DummyDatesService" bus="dummyCxfBus">
+        <cxf:providers>
+            <ref bean="jacksonJaxbJsonProvider"/>
+        </cxf:providers>
+        <cxf:features>
+            <core:logging/>
+            <bean class="org.apache.cxf.transport.common.gzip.GZIPFeature"/>
+        </cxf:features>
+        <cxf:outInterceptors>
+            <bean class="com.integ.integration.services.contracts.common.rest.ResponseCodeSettingInterceptor"/>
+        </cxf:outInterceptors>
+    </cxf:rsServer>
+    <cxf:rsServer id="listsDummyService" address="${dummy.rest.address}/lists"
+                  serviceClass="com.integ.integration.services.contracts.common.test.service.DummyListsService" bus="dummyCxfBus">
+        <cxf:providers>
+            <ref bean="jacksonJaxbJsonProvider"/>
+        </cxf:providers>
+        <cxf:features>
+            <core:logging/>
+            <bean class="org.apache.cxf.transport.common.gzip.GZIPFeature"/>
+        </cxf:features>
+        <cxf:outInterceptors>
+            <bean class="com.integ.integration.services.contracts.common.rest.ResponseCodeSettingInterceptor"/>
+        </cxf:outInterceptors>
+    </cxf:rsServer>
+    <cxf:rsServer id="abstractDummyService" address="${dummy.rest.address}/abstracts"
+                  serviceClass="com.integ.integration.services.contracts.common.test.service.DummyAbstractService" bus="dummyCxfBus">
+        <cxf:providers>
+            <ref bean="jacksonJaxbJsonProvider"/>
+        </cxf:providers>
+        <cxf:features>
+            <core:logging/>
+            <bean class="org.apache.cxf.transport.common.gzip.GZIPFeature"/>
+        </cxf:features>
+        <cxf:outInterceptors>
+            <bean class="com.integ.integration.services.contracts.common.rest.ResponseCodeSettingInterceptor"/>
+        </cxf:outInterceptors>
+    </cxf:rsServer>
+
+
+
+    <!--
+        Clients
+    -->
+    <cxf:rsClient id="getServiceClient" address="${dummy.rest.address}/get"
+                  serviceClass="com.integ.integration.services.contracts.common.test.service.DummyGetService" bus="dummyCxfBus">
+        <cxf:features>
+            <core:logging/>
+            <bean class="org.apache.cxf.transport.common.gzip.GZIPFeature"/>
+        </cxf:features>
+        <cxf:providers>
+            <ref bean="jacksonJaxbJsonProvider"/>
+        </cxf:providers>
+        <cxf:inInterceptors>
+            <bean id="jaxrsResponseUnmarshaller" class="org.apache.cxf.jaxrs.interceptor.JAXRSInInterceptor"/>
+        </cxf:inInterceptors>
+    </cxf:rsClient>
+    <cxf:rsClient id="numericServiceClient" address="${dummy.rest.address}/numbers"
+                  serviceClass="com.integ.integration.services.contracts.common.test.service.DummyNumbersService" bus="dummyCxfBus">
+        <cxf:features>
+            <core:logging/>
+            <bean class="org.apache.cxf.transport.common.gzip.GZIPFeature"/>
+        </cxf:features>
+        <cxf:providers>
+            <ref bean="jacksonJaxbJsonProvider"/>
+        </cxf:providers>
+        <cxf:inInterceptors>
+            <bean id="jaxrsResponseUnmarshaller" class="org.apache.cxf.jaxrs.interceptor.JAXRSInInterceptor"/>
+        </cxf:inInterceptors>
+    </cxf:rsClient>
+    <cxf:rsClient id="datesServiceClient" address="${dummy.rest.address}/dates"
+                  serviceClass="com.integ.integration.services.contracts.common.test.service.DummyDatesService" bus="dummyCxfBus">
+        <cxf:features>
+            <core:logging/>
+            <bean class="org.apache.cxf.transport.common.gzip.GZIPFeature"/>
+        </cxf:features>
+        <cxf:providers>
+            <ref bean="jacksonJaxbJsonProvider"/>
+        </cxf:providers>
+        <cxf:inInterceptors>
+            <bean id="jaxrsResponseUnmarshaller" class="org.apache.cxf.jaxrs.interceptor.JAXRSInInterceptor"/>
+        </cxf:inInterceptors>
+    </cxf:rsClient>
+    <cxf:rsClient id="listsServiceClient" address="${dummy.rest.address}/lists"
+                  serviceClass="com.integ.integration.services.contracts.common.test.service.DummyDatesService" bus="dummyCxfBus">
+        <cxf:features>
+            <core:logging/>
+            <bean class="org.apache.cxf.transport.common.gzip.GZIPFeature"/>
+        </cxf:features>
+        <cxf:providers>
+            <ref bean="jacksonJaxbJsonProvider"/>
+        </cxf:providers>
+        <cxf:inInterceptors>
+            <bean id="jaxrsResponseUnmarshaller" class="org.apache.cxf.jaxrs.interceptor.JAXRSInInterceptor"/>
+        </cxf:inInterceptors>
+    </cxf:rsClient>
+    <cxf:rsClient id="abstractServiceClient" address="${dummy.rest.address}/abstracts"
+                  serviceClass="com.integ.integration.services.contracts.common.test.service.DummyAbstractService" bus="dummyCxfBus">
+        <cxf:features>
+            <core:logging/>
+            <bean class="org.apache.cxf.transport.common.gzip.GZIPFeature"/>
+        </cxf:features>
+        <cxf:providers>
+            <ref bean="jacksonJaxbJsonProvider"/>
+        </cxf:providers>
+        <cxf:inInterceptors>
+            <bean id="jaxrsResponseUnmarshaller" class="org.apache.cxf.jaxrs.interceptor.JAXRSInInterceptor"/>
+        </cxf:inInterceptors>
+    </cxf:rsClient>
+
+</beans>
+
+

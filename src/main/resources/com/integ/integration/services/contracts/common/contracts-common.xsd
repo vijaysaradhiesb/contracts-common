@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="http://integ.com/integration/services/contracts/common"
+           xmlns="http://integ.com/integration/services/contracts/common"
+           xmlns:jaxb="http://java.sun.com/xml/ns/jaxb"
+           jaxb:version="2.1">
+
+    <xs:annotation>
+        <xs:appinfo>
+            <jaxb:globalBindings localScoping="toplevel">
+                <jaxb:javaType name="java.util.Calendar" xmlType="xs:dateTime"
+                               parseMethod="javax.xml.bind.DatatypeConverter.parseDateTime"
+                               printMethod="javax.xml.bind.DatatypeConverter.printDateTime"/>
+                <jaxb:javaType name="java.util.Calendar" xmlType="xs:date"
+                               parseMethod="javax.xml.bind.DatatypeConverter.parseDate"
+                               printMethod="javax.xml.bind.DatatypeConverter.printDate"/>
+                <jaxb:javaType name="java.util.Calendar" xmlType="xs:time"
+                               parseMethod="javax.xml.bind.DatatypeConverter.parseTime"
+                               printMethod="javax.xml.bind.DatatypeConverter.printTime"/>
+                <jaxb:serializable/>
+            </jaxb:globalBindings>
+        </xs:appinfo>
+    </xs:annotation>
+
+    <xs:complexType name="faultDetails">
+        <xs:sequence>
+            <xs:element name="error" minOccurs="0">
+                <xs:complexType>
+                    <xs:attribute name="key" use="required" type="xs:string"/>
+                    <xs:attribute name="code" use="required" type="xs:string"/>
+                </xs:complexType>
+            </xs:element>
+            <xs:element name="message" minOccurs="0">
+                <xs:complexType>
+                    <xs:simpleContent>
+                        <xs:extension base="xs:string">
+                            <xs:attribute name="lang" use="required" type="xs:string"/>
+                        </xs:extension>
+                    </xs:simpleContent>
+                </xs:complexType>
+            </xs:element>
+            <xs:element name="hint" minOccurs="0" maxOccurs="unbounded" type="xs:string"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="RefData">
+        <xs:attribute name="code" type="xs:string"/>
+        <xs:attribute name="desc" type="xs:string"/>
+        <xs:attribute name="lang" type="xs:string"/>
+    </xs:complexType>
+
+</xs:schema>

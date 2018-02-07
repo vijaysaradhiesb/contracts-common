@@ -1,0 +1,1 @@
+PUBLIC "http://integ.com/integration/services/contracts/common" "maven:com.integ.integration.contract:contracts-common::!/com/integ/integration/services/contracts/common/contracts-common.xsd"
